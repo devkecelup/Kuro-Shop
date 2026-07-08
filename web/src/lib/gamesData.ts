@@ -733,27 +733,3 @@ export const GAMES = {
 
 export const GAME_ORDER = ["mlbb","ff","ffmax","pubgm","hok","genshin","valorant","roblox","codm","wildrift","deltaforce","steam"];
 
-/* ----------------------------------------------------------
-   Shared helpers used by both script.js and topup.js
----------------------------------------------------------- */
-
-// Renders a game's icon: image from logoUrl if set, otherwise emoji fallback.
-// If the image link is broken, it auto-falls-back to the emoji.
-function getGameIcon(g: any, sizeClass?: string){
-  if(g.logoUrl && g.logoUrl.trim()){
-    return `<img src="${g.logoUrl}" alt="${g.name}" class="game-icon-img ${sizeClass||''}" loading="lazy" onerror="this.outerHTML='<span class=&quot;game-icon-emoji ${sizeClass||''}&quot;>${g.emoji}</span>'">`;
-  }
-  return `<span class="game-icon-emoji ${sizeClass||''}">${g.emoji}</span>`;
-}
-
-// Builds the display label + bonus breakdown for a nominal item.
-function getNominalParts(n: any, game: any){
-  if(n.label){
-    return { main: n.label, breakdown: null };
-  }
-  const total = n.base + (n.bonus || 0);
-  const unit = game.unit || '';
-  const main = `${total.toLocaleString('id-ID')} ${unit}`;
-  const breakdown = n.bonus > 0 ? `(${n.base.toLocaleString('id-ID')}+${n.bonus.toLocaleString('id-ID')})` : null;
-  return { main, breakdown };
-}
