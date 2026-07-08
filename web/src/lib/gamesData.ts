@@ -739,7 +739,7 @@ export const GAME_ORDER = ["mlbb","ff","ffmax","pubgm","hok","genshin","valorant
 
 // Renders a game's icon: image from logoUrl if set, otherwise emoji fallback.
 // If the image link is broken, it auto-falls-back to the emoji.
-function getGameIcon(g, sizeClass){
+function getGameIcon(g: any, sizeClass?: string){
   if(g.logoUrl && g.logoUrl.trim()){
     return `<img src="${g.logoUrl}" alt="${g.name}" class="game-icon-img ${sizeClass||''}" loading="lazy" onerror="this.outerHTML='<span class=&quot;game-icon-emoji ${sizeClass||''}&quot;>${g.emoji}</span>'">`;
   }
@@ -747,7 +747,7 @@ function getGameIcon(g, sizeClass){
 }
 
 // Builds the display label + bonus breakdown for a nominal item.
-function getNominalParts(n, game){
+function getNominalParts(n: any, game: any){
   if(n.label){
     return { main: n.label, breakdown: null };
   }
