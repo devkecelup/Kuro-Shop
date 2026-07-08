@@ -8,6 +8,7 @@ import FlashSaleTimer from '@/components/FlashSaleTimer';
 // Import GAMES only for the fallback fields definition since DB doesn't have it yet
 import { GAMES } from '@/lib/gamesData';
 import ReviewSection from '@/components/ReviewSection';
+import Script from 'next/script';
 
 export default function GameTopup({ params }: { params: Promise<{ game: string }> }) {
   const unwrappedParams = use(params);
@@ -84,14 +85,7 @@ export default function GameTopup({ params }: { params: Promise<{ game: string }
       });
       const data = await res.json();
       if (data.success) {
-        let finalNickname = data.username;
-        if (derivedGameKey === 'mlbb') {
-          const regionMatch = game.name.match(/\((.*?)\)/);
-          if (regionMatch && regionMatch[1]) {
-            finalNickname += ' (Region: ' + regionMatch[1] + ')';
-          }
-        }
-        setNickname(finalNickname);
+        setNickname(data.username);
       } else {
         alert(data.message || 'ID tidak ditemukan');
       }
@@ -105,28 +99,52 @@ export default function GameTopup({ params }: { params: Promise<{ game: string }
   const handleCheckout = async () => {
     setIsCheckoutLoading(true);
     
-    // Simulasi loading payment gateway (2 detik)
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Insert dummy transaction ke database
     try {
-      // Create a random transaction ID
-      const trxId = 'TRX-' + Math.floor(100000 + Math.random() * 900000);
-      const { error } = await supabase.from('transactions').insert({
-        id: trxId,
-        user_email: 'user@example.com', // Nanti bisa diganti dengan session email sebenarnya
-        game_name: game.name,
-        item_name: selectedNominal.name,
+      const payload = {
+        gameName: game.name,
+        itemName: selectedNominal.name,
+        providerCode: selectedNominal.provider_code,
         price: (selectedNominal.is_flash_sale && selectedNominal.discount_price ? selectedNominal.discount_price : subtotal) * qty + adminFee,
-        status: derivedGameKey === 'roblox' || derivedGameKey === 'joki' ? 'Pending' : 'Diproses'
+        qty: qty,
+        customerDetails: { email: 'user@example.com' }, // Ganti dengan session email
+        formFields: formFields
+      };
+
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
-      if (error) console.error("Gagal menyimpan transaksi:", error);
+      const data = await res.json();
+      
+      if (data.success && data.token) {
+        // Trigger Midtrans Snap
+        (window as any).snap.pay(data.token, {
+          onSuccess: function(result: any){
+            console.log('success', result);
+            setShowReviewModal(true);
+          },
+          onPending: function(result: any){
+            console.log('pending', result);
+            alert('Pesanan Pending. Menunggu pembayaran Anda!');
+          },
+          onError: function(result: any){
+            console.log('error', result);
+            alert('Pembayaran gagal!');
+          },
+          onClose: function(){
+            console.log('customer closed the popup without finishing the payment');
+          }
+        });
+      } else {
+        alert(data.message || 'Gagal memproses checkout');
+      }
     } catch(e) {
       console.error(e);
+      alert('Terjadi kesalahan saat checkout.');
     }
 
     setIsCheckoutLoading(false);
-    setShowReviewModal(true); // Munculkan pop-up rating
   };
 
   const submitReview = async () => {
@@ -165,8 +183,22 @@ export default function GameTopup({ params }: { params: Promise<{ game: string }
   const staticGameData = (GAMES as any)[derivedGameKey] || { fields: [{id:"userid", label:"User ID", placeholder: "Masukkan User ID", type:"text", width:"full"}], hint: "" };
   const categories = Array.from(new Set(items.map(i => i.category)));
 
-  const subtotal = selectedNominal ? selectedNominal.price : 0;
-  const adminFee = 750;
+  const subtotal = selectedNominal ? (selectedNominal.is_flash_sale && selectedNominal.discount_price ? selectedNominal.discount_price : selectedNominal.price) : 0;
+  
+  const getAdminFee = (method: string) => {
+    if (!subtotal) return 0;
+    const base = subtotal * qty;
+    switch(method) {
+      case 'QRIS': return Math.ceil(base * 0.007);
+      case 'GoPay': return Math.ceil(base * 0.02);
+      case 'DANA': return Math.ceil(base * 0.015);
+      case 'OVO': return Math.ceil(base * 0.015);
+      case 'Virtual Account': return 4000;
+      default: return 0;
+    }
+  };
+
+  const adminFee = selectedPayment ? getAdminFee(selectedPayment) : 0;
   const total = (subtotal * qty) + adminFee;
 
   const isFormComplete = staticGameData.fields.every((f: any) => formFields[f.id] && formFields[f.id].trim() !== '');
@@ -174,7 +206,9 @@ export default function GameTopup({ params }: { params: Promise<{ game: string }
   if (loading) return <div style={{ color: 'white', padding: '4rem', textAlign: 'center' }}>Loading...</div>;
 
   return (
-    <div className="animate-fade-in container" style={{ padding: '4rem 1rem' }}>
+    <>
+      <Script src="https://app.sandbox.midtrans.com/snap/snap.js" data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY} strategy="lazyOnload" />
+      <div className="animate-fade-in container" style={{ padding: '4rem 1rem' }}>
       <nav style={{ marginBottom: '2rem', color: 'var(--text-gray)' }}>
         <Link href="/" style={{ color: 'inherit' }}>Home</Link>
         <span style={{ margin: '0 0.5rem' }}>/</span>
@@ -313,15 +347,20 @@ export default function GameTopup({ params }: { params: Promise<{ game: string }
               Pilih Metode Pembayaran
             </h2>
             <div style={{ display: 'grid', gap: '1rem' }}>
-              {['QRIS', 'DANA', 'GoPay', 'OVO'].map(method => (
-                <div key={method} onClick={() => setSelectedPayment(method)} style={{
-                  padding: '1rem 1.5rem', borderRadius: '12px', border: `2px solid ${selectedPayment === method ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                  backgroundColor: 'var(--bg-dark)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                }}>
-                  <div style={{ fontWeight: 'bold', color: 'var(--text-white)' }}>{method}</div>
-                  <div style={{ color: 'var(--text-gray)', fontSize: '0.9rem' }}>{method === 'QRIS' ? 'Rp 750' : 'Gratis'}</div>
-                </div>
-              ))}
+              {['QRIS', 'DANA', 'GoPay', 'OVO', 'Virtual Account'].map(method => {
+                const feeAmount = getAdminFee(method);
+                return (
+                  <div key={method} onClick={() => setSelectedPayment(method)} style={{
+                    padding: '1rem 1.5rem', borderRadius: '12px', border: `2px solid ${selectedPayment === method ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                    backgroundColor: 'var(--bg-dark)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                  }}>
+                    <div style={{ fontWeight: 'bold', color: 'var(--text-white)' }}>{method}</div>
+                    <div style={{ color: 'var(--text-gray)', fontSize: '0.9rem' }}>
+                      {feeAmount > 0 ? `+ Rp ${feeAmount.toLocaleString('id-ID')}` : 'Gratis'}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -474,5 +513,6 @@ export default function GameTopup({ params }: { params: Promise<{ game: string }
         </div>
       )}
     </div>
+    </>
   );
 }

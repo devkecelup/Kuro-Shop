@@ -116,3 +116,32 @@ export async function checkStatus(trxId: string) {
   }
 }
 
+/**
+ * Buat Pesanan Top Up
+ */
+export async function createOrder(serviceCode: string, target1: string, target2: string = '') {
+  const formData = new URLSearchParams();
+  formData.append('key', VIP_API_KEY);
+  formData.append('sign', generateSign());
+  formData.append('type', 'order');
+  formData.append('service', serviceCode);
+  formData.append('data_no', target1);
+  if (target2) formData.append('data_zone', target2);
+
+  try {
+    const res = await fetch(`${VIP_BASE_URL}/game-feature`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: formData.toString()
+    });
+    
+    return await res.json();
+  } catch (error) {
+    console.error("VIP Reseller Create Order Error:", error);
+    return { result: false, message: 'Gagal membuat pesanan' };
+  }
+}
+
+
